@@ -1,0 +1,14 @@
+[package]
+name = "tdiff"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Line-based text diffing library with a small CLI on top"
+
+[lib]
+name = "tdiff"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tdiff"
+path = "src/main.rs"
