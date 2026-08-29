@@ -36,7 +36,7 @@ case of starting from whole strings.
 ## CLI
 
 ```
-tdiff <old> <new>
+tdiff [-u] <old> <new>
 ```
 
 Either argument can be a file path or `-` to read that side from stdin:
@@ -47,16 +47,35 @@ cat new.txt | tdiff old.txt -
 some-command | tdiff baseline.txt -
 ```
 
-Output uses one line per row: a leading space for unchanged lines, `-` for
-lines only in the old input, `+` for lines only in the new one. Exit status
-follows the `diff(1)` convention: 0 if the inputs are identical, 1 if they
-differ, 2 on a usage error.
+By default, output uses one line per row: a leading space for unchanged
+lines, `-` for lines only in the old input, `+` for lines only in the new
+one. Pass `-u` / `--unified` for the more familiar unified diff format
+instead, with `---`/`+++` file headers and `@@ -l,s +l,s @@` hunk headers
+carrying three lines of context:
+
+```sh
+tdiff -u old.txt new.txt
+```
+
+```
+--- old.txt
++++ new.txt
+@@ -1,3 +1,3 @@
+ one
+-two
++two and a half
+ three
+```
+
+Exit status follows the `diff(1)` convention: 0 if the inputs are
+identical, 1 if they differ, 2 on a usage error.
 
 ## Status
 
-Early. Line-level diffing works; there's no unified-diff-style output with
-hunk headers yet, and no word-level mode. See the library tests in
-`src/lib.rs` for the cases currently covered.
+Early. Line-level diffing and unified diff output work; the context size
+for `-u` is fixed at 3 lines (no `-U` flag yet), and there's no word-level
+mode. See the library tests in `src/lib.rs` for the cases currently
+covered.
 
 ## License
 
