@@ -36,7 +36,7 @@ case of starting from whole strings.
 ## CLI
 
 ```
-tdiff [-u] <old> <new>
+tdiff [-u] [-U<n>] <old> <new>
 ```
 
 Either argument can be a file path or `-` to read that side from stdin:
@@ -67,14 +67,21 @@ tdiff -u old.txt new.txt
  three
 ```
 
+Context defaults to 3 lines; pass `-U<n>` to change it (`-U0` for none,
+`-U8` for more). `-U` implies `-u`:
+
+```sh
+tdiff -U1 old.txt new.txt
+```
+
 Exit status follows the `diff(1)` convention: 0 if the inputs are
 identical, 1 if they differ, 2 on a usage error.
 
 ## Status
 
-Early. Line-level diffing and unified diff output work; the context size
-for `-u` is fixed at 3 lines (no `-U` flag yet), and there's no word-level
-mode. See the library tests in `src/lib.rs` for the cases currently
+Early. Line-level diffing and unified diff output work, including
+adjustable context via `-U`. No colorized output and no word-level mode
+yet. See the library tests in `src/lib.rs` for the cases currently
 covered.
 
 ## License

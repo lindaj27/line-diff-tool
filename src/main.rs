@@ -23,20 +23,53 @@ fn read_source(path: &str, stdin_cache: &mut Option<String>) -> io::Result<Strin
 }
 
 fn usage() -> ! {
-    eprintln!("usage: tdiff [-u] <old> <new>");
+    eprintln!("usage: tdiff [-u] [-U<n>] <old> <new>");
     eprintln!("       pass - for either side to read that side from stdin");
     eprintln!("       -u, --unified   print unified diff with @@ hunk headers");
+    eprintln!("       -U<n>           lines of context around each change (implies -u, default 3)");
     process::exit(2);
+}
+
+/// Parse a `-U<n>` argument, either attached ("-U5") or as a separate
+/// following argument ("-U" "5"). Returns the context width and how many
+/// of the remaining args (0 or 1) it consumed beyond the flag itself.
+fn parse_context_flag(flag: &str, rest: &[String]) -> (usize, usize) {
+    let attached = &flag[2..];
+    if !attached.is_empty() {
+        let n = attached.parse().unwrap_or_else(|_| {
+            eprintln!("tdiff: invalid context value: {}", attached);
+            process::exit(2);
+        });
+        (n, 0)
+    } else {
+        let arg = rest.first().unwrap_or_else(|| usage());
+        let n = arg.parse().unwrap_or_else(|_| {
+            eprintln!("tdiff: invalid context value: {}", arg);
+            process::exit(2);
+        });
+        (n, 1)
+    }
 }
 
 fn main() {
     let mut unified = false;
+    let mut context = DEFAULT_CONTEXT;
     let mut paths: Vec<String> = Vec::new();
-    for arg in env::args().skip(1) {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
         match arg.as_str() {
             "-u" | "--unified" => unified = true,
-            _ => paths.push(arg),
+            _ if arg.starts_with("-U") => {
+                unified = true;
+                let (n, consumed) = parse_context_flag(arg, &args[i + 1..]);
+                context = n;
+                i += consumed;
+            }
+            _ => paths.push(arg.clone()),
         }
+        i += 1;
     }
     if paths.len() != 2 {
         usage();
@@ -53,7 +86,7 @@ fn main() {
     });
 
     if unified {
-        let out = format_unified(&paths[0], &paths[1], &old_text, &new_text, DEFAULT_CONTEXT);
+        let out = format_unified(&paths[0], &paths[1], &old_text, &new_text, context);
         print!("{}", out);
         process::exit(if out.is_empty() { 0 } else { 1 });
     }
