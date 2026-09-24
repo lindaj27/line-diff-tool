@@ -1,11 +1,94 @@
 use std::env;
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, IsTerminal, Read};
 use std::process;
 
-use tdiff::{diff, format_unified, split_lines, Op};
+use tdiff::{diff, diff_text, split_lines, unified_hunks, Hunk, Op};
 
 const DEFAULT_CONTEXT: usize = 3;
+
+const RED: &str = "\x1b[31m";
+const GREEN: &str = "\x1b[32m";
+const CYAN: &str = "\x1b[36m";
+const BOLD: &str = "\x1b[1m";
+const RESET: &str = "\x1b[0m";
+
+#[derive(Clone, Copy)]
+enum ColorMode {
+    Always,
+    Never,
+    Auto,
+}
+
+fn color_for(op: Op) -> &'static str {
+    match op {
+        Op::Insert => GREEN,
+        Op::Delete => RED,
+        Op::Equal => "",
+    }
+}
+
+/// Print the plain +/-/space format, returning whether any line changed.
+fn print_plain(hunks: &[Hunk<'_>], use_color: bool) -> bool {
+    let mut changed = false;
+    for hunk in hunks {
+        if hunk.op != Op::Equal {
+            changed = true;
+        }
+        if use_color {
+            println!("{}{}{}", color_for(hunk.op), hunk, RESET);
+        } else {
+            println!("{}", hunk);
+        }
+    }
+    changed
+}
+
+/// Print the unified diff format, returning whether it produced any hunks.
+fn print_unified(
+    old_label: &str,
+    new_label: &str,
+    old_text: &str,
+    new_text: &str,
+    context: usize,
+    use_color: bool,
+) -> bool {
+    let hunks = diff_text(old_text, new_text);
+    let groups = unified_hunks(&hunks, context);
+    if groups.is_empty() {
+        return false;
+    }
+
+    if use_color {
+        println!("{BOLD}--- {old_label}{RESET}");
+        println!("{BOLD}+++ {new_label}{RESET}");
+    } else {
+        println!("--- {}", old_label);
+        println!("+++ {}", new_label);
+    }
+
+    for group in &groups {
+        if use_color {
+            println!(
+                "{CYAN}@@ -{},{} +{},{} @@{RESET}",
+                group.old_start, group.old_len, group.new_start, group.new_len
+            );
+        } else {
+            println!(
+                "@@ -{},{} +{},{} @@",
+                group.old_start, group.old_len, group.new_start, group.new_len
+            );
+        }
+        for line in &group.lines {
+            if use_color {
+                println!("{}{}{}", color_for(line.op), line, RESET);
+            } else {
+                println!("{}", line);
+            }
+        }
+    }
+    true
+}
 
 /// Read one input source. A path of "-" means stdin; stdin can only be
 /// read once, so the result is cached in case both sides ask for it.
@@ -23,10 +106,12 @@ fn read_source(path: &str, stdin_cache: &mut Option<String>) -> io::Result<Strin
 }
 
 fn usage() -> ! {
-    eprintln!("usage: tdiff [-u] [-U<n>] <old> <new>");
+    eprintln!("usage: tdiff [-u] [-U<n>] [--color[=always|never|auto]] <old> <new>");
     eprintln!("       pass - for either side to read that side from stdin");
     eprintln!("       -u, --unified   print unified diff with @@ hunk headers");
     eprintln!("       -U<n>           lines of context around each change (implies -u, default 3)");
+    eprintln!("       --color[=WHEN]  colorize output; WHEN is always, never, or auto (default)");
+    eprintln!("                       auto colors when stdout is a terminal and NO_COLOR is unset");
     process::exit(2);
 }
 
@@ -54,6 +139,7 @@ fn parse_context_flag(flag: &str, rest: &[String]) -> (usize, usize) {
 fn main() {
     let mut unified = false;
     let mut context = DEFAULT_CONTEXT;
+    let mut color_mode = ColorMode::Auto;
     let mut paths: Vec<String> = Vec::new();
     let args: Vec<String> = env::args().skip(1).collect();
     let mut i = 0;
@@ -61,6 +147,19 @@ fn main() {
         let arg = &args[i];
         match arg.as_str() {
             "-u" | "--unified" => unified = true,
+            "--color" => color_mode = ColorMode::Always,
+            _ if arg.starts_with("--color=") => {
+                let value = &arg["--color=".len()..];
+                color_mode = match value {
+                    "always" => ColorMode::Always,
+                    "never" => ColorMode::Never,
+                    "auto" => ColorMode::Auto,
+                    _ => {
+                        eprintln!("tdiff: invalid --color value: {}", value);
+                        process::exit(2);
+                    }
+                };
+            }
             _ if arg.starts_with("-U") => {
                 unified = true;
                 let (n, consumed) = parse_context_flag(arg, &args[i + 1..]);
@@ -75,6 +174,12 @@ fn main() {
         usage();
     }
 
+    let use_color = match color_mode {
+        ColorMode::Always => true,
+        ColorMode::Never => false,
+        ColorMode::Auto => env::var_os("NO_COLOR").is_none() && io::stdout().is_terminal(),
+    };
+
     let mut stdin_cache = None;
     let old_text = read_source(&paths[0], &mut stdin_cache).unwrap_or_else(|e| {
         eprintln!("tdiff: {}: {}", paths[0], e);
@@ -86,22 +191,14 @@ fn main() {
     });
 
     if unified {
-        let out = format_unified(&paths[0], &paths[1], &old_text, &new_text, context);
-        print!("{}", out);
-        process::exit(if out.is_empty() { 0 } else { 1 });
+        let changed = print_unified(&paths[0], &paths[1], &old_text, &new_text, context, use_color);
+        process::exit(if changed { 1 } else { 0 });
     }
 
     let old_lines = split_lines(&old_text);
     let new_lines = split_lines(&new_text);
     let hunks = diff(&old_lines, &new_lines);
-
-    let mut changed = false;
-    for hunk in &hunks {
-        if hunk.op != Op::Equal {
-            changed = true;
-        }
-        println!("{}", hunk);
-    }
+    let changed = print_plain(&hunks, use_color);
 
     process::exit(if changed { 1 } else { 0 });
 }

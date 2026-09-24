@@ -36,7 +36,7 @@ case of starting from whole strings.
 ## CLI
 
 ```
-tdiff [-u] [-U<n>] <old> <new>
+tdiff [-u] [-U<n>] [--color[=always|never|auto]] <old> <new>
 ```
 
 Either argument can be a file path or `-` to read that side from stdin:
@@ -77,12 +77,21 @@ tdiff -U1 old.txt new.txt
 Exit status follows the `diff(1)` convention: 0 if the inputs are
 identical, 1 if they differ, 2 on a usage error.
 
+Output is colorized (red for removed lines, green for added, cyan for
+`@@` hunk headers) when stdout is a terminal and the `NO_COLOR` environment
+variable is unset. Pass `--color=always` to force color even when piping,
+`--color=never` to suppress it, or bare `--color` as shorthand for
+`--color=always`:
+
+```sh
+tdiff --color=always old.txt new.txt | less -R
+```
+
 ## Status
 
-Early. Line-level diffing and unified diff output work, including
-adjustable context via `-U`. No colorized output and no word-level mode
-yet. See the library tests in `src/lib.rs` for the cases currently
-covered.
+Early. Line-level diffing, unified diff output with adjustable context via
+`-U`, and colorized output work. No word-level mode yet. See the library
+tests in `src/lib.rs` for the cases currently covered.
 
 ## License
 
